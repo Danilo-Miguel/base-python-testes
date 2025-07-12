@@ -31,4 +31,5 @@ jobs:
 
     - name: 🧪 Rodar testes com cobertura
       run: |
-        pytest --cov=. --cov-report=term-missing 
+        pytest -v
+        pytest  --cov=controllers --cov=services --cov=models --cov=config --cov-report=term-missing
