@@ -33,4 +33,9 @@ jobs:
       run: |
         pytest -v
         pytest  --cov=controllers --cov=services --cov=models --cov=config --cov-report=term-missing
-        radon cc ./tests
+        radon cc ./tests -s -a
+        radon mi ./tests -s -a
+        radon raw ./tests -s -a
+        radon hal ./tests -s -a
+        
+        pylint ./tests/
