@@ -2,10 +2,10 @@ name: Teste Auth Service
 
 on:
   push:
-    branches: [aula/pytest-unit-test]
+    branches: [aula1/pytest-unit-test]
 
   pull_request: 
-    branches: [aula/pytest-unit-test]
+    branches: [aula1/pytest-unit-test]
 
 jobs:
   test-auth-service:
