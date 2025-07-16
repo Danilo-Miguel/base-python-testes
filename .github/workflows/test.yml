@@ -3,10 +3,10 @@ name:  Test auth service
 
 on:
     push:
-        branches: [aula1/pytets-unit-test]
+        branches: [aula1/pytest-unit-test]
 
     pull_request:
-        branches: [aula1/pytets-unit-test]
+        branches: [aula1/pytest-unit-test]
         
 jobs:
   test:
