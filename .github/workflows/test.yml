@@ -1,39 +1,35 @@
-name: Teste Auth Service
+name:  Test auth service
+
 
 on:
-  push:
-    branches: [aula1/pytest-unit-test]
+    push:
+        branches: [aula1/pytets-unit-test]
 
-  pull_request: 
-    branches: [aula1/pytest-unit-test]
-
-
+    pull_request:
+        branches: [aula1/pytets-unit-test]
+        
 jobs:
-  test-auth-service:
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./burguer-app/auth-service
+        working-directory: ./burguer_app/auth_service
 
     steps:
-    - name: 📦 Checkout do código
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: 🐍 Configurar Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12.4'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.4'
 
-    - name: 📚 Instalar dependências do auth-service
-      working-directory: ./burguer-app/auth-service
-      run: |
-        pip install -r requirements.txt
-       
+      - name: Install dependencies
+        run: |
+          working-directory: ./burguer_app/auth_service
+          pip install -r requirements.txt
 
-    - name: 🧪 Rodar testes com cobertura
-      run: |
-        pytest -v
-        pytest  --cov=controllers --cov=services --cov=models --cov=config --cov-report=term-missing
-        radon cc ./tests 
-        
-        pylint ./tests/
+      - name: Run tests
+        run: |
+          pytest -v   
+            
