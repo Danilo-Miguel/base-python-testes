@@ -25,8 +25,8 @@ jobs:
           python-version: '3.12.4'
 
       - name: Install dependencies
+        working-directory: ./burguer_app/auth_service
         run: |
-          working-directory: ./burguer_app/auth_service
           pip install -r requirements.txt
 
       - name: Run tests
