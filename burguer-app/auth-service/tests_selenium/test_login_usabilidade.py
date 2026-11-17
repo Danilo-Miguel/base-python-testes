@@ -2,7 +2,7 @@
 Teste de usabilidade (UI) do login com Selenium.
 Pré-requisitos:
   1. pip install selenium pytest
-  2. Subir o auth-service:  python app.py   (http://localhost:5000)
+  2. Subir o auth-service:  python app.py   (http://127.0.0.1:5000/auth/login)
   3. Ter um usuário cadastrado (ajuste EMAIL/SENHA abaixo)
 Rodar:  pytest tests_selenium -v
 """
@@ -12,7 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = "http://127.0.0.1:5000/auth"
 EMAIL = "teste@teste.com"
 SENHA = "123456"
 
