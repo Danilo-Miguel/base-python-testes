@@ -6,6 +6,7 @@ Pré-requisitos:
   3. Ter um usuário cadastrado (ajuste EMAIL/SENHA abaixo)
 Rodar:  pytest tests_selenium -v
 """
+import time
 import pytest
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -15,21 +16,32 @@ from selenium.webdriver.support import expected_conditions as EC
 BASE_URL = "http://127.0.0.1:5000/auth"
 EMAIL = "teste@teste.com"
 SENHA = "123456"
+PAUSA = 1.5   # segundos entre cada acao (0 = velocidade normal)
+
+
+def pausa():
+    time.sleep(PAUSA)
 
 
 @pytest.fixture
 def driver():
     d = webdriver.Chrome()          # Selenium 4 baixa o driver sozinho
-    d.implicitly_wait(5)
+    d.implicitly_wait(10)
     yield d
+    pausa()
+    pausa()
     d.quit()
 
 
 def preencher_login(driver, email, senha):
     driver.get(f"{BASE_URL}/login")
+    pausa()
     driver.find_element(By.NAME, "email").send_keys(email)
+    pausa()
     driver.find_element(By.NAME, "password").send_keys(senha)
+    pausa()
     driver.find_element(By.CSS_SELECTOR, "button.btn-primary").click()
+    pausa()
 
 
 # 1) A página carrega e mostra os elementos esperados
@@ -77,10 +89,12 @@ def test_validacao_campos(driver, email, senha):
 def test_link_cadastro(driver):
     driver.get(f"{BASE_URL}/login")
     link = driver.find_element(By.LINK_TEXT, "Cadastre-se aqui")
+    pausa()
     assert "/register" in link.get_attribute("href")
 
 
 # 6) Segurança/usabilidade: dashboard sem login redireciona para /login
 def test_dashboard_sem_login(driver):
     driver.get(f"{BASE_URL}/dashboard")
+    pausa()
     assert "/login" in driver.current_url
