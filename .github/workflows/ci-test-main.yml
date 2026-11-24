@@ -1,0 +1,250 @@
+# =====================================================================
+#  Pipeline de CI do Burguer App (branch test-main)
+#  Etapas:  1) Sobe cada microsserviço (smoke test)
+#           2) Lint (erros graves de sintaxe)
+#           3) Testes unitários (pytest + cobertura) em várias versões do Python
+#           4) Teste de usabilidade/E2E com Selenium (todos os serviços juntos)
+#  Passo a passo explicado em: docs/PIPELINE-CI.md
+# =====================================================================
+
+name: CI - Burguer App (test-main)
+
+# ---------------------------------------------------------------------
+# GATILHOS: quando o pipeline roda
+# ---------------------------------------------------------------------
+on:
+  push:                          # roda a cada push...
+    branches: [ "test-main" ]    # ...somente na branch test-main
+  pull_request:                  # roda quando abrem/atualizam um PR...
+    branches: [ "test-main" ]    # ...que tenha como destino a test-main
+  workflow_dispatch:             # botão "Run workflow" manual na aba Actions
+
+# Se fizer 2 pushes seguidos, cancela a execução antiga (economiza minutos)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Variáveis disponíveis para TODOS os jobs
+env:
+  PYTHON_VERSION: "3.12"                       # versão "oficial" do projeto
+  MONGO_URI: "mongodb://localhost:27017"       # banco temporário do CI (não o Atlas!)
+  SECRET_KEY: "chave-so-para-ci"
+  JWT_SECRET: "jwt-so-para-ci"
+
+jobs:
+  # ===================================================================
+  # ETAPA 1 — SMOKE TEST: cada serviço consegue subir e responder?
+  # ===================================================================
+  smoke-servicos:
+    name: "1 · Sobe ${{ matrix.service }}"
+    runs-on: ubuntu-latest                     # máquina virtual Linux do GitHub
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false                         # se um serviço falhar, os outros continuam
+      matrix:                                  # 1 job para cada serviço, em paralelo
+        include:
+          - { service: auth-service,    port: 5000, path: /auth/login }
+          - { service: user-service,    port: 5001, path: /user/create }
+          - { service: order-service,   port: 5002, path: /order/list }
+          - { service: product-service, port: 5003, path: /product/list }
+
+    # Container com MongoDB rodando ao lado do job (resolve o problema do banco)
+    services:
+      mongo:
+        image: mongo:7
+        ports: [ "27017:27017" ]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    defaults:
+      run:
+        working-directory: burguer-app/${{ matrix.service }}
+
+    steps:
+      - name: 📦 Checkout do código
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip                                         # reaproveita downloads
+          cache-dependency-path: burguer-app/*/requirements.txt
+
+      - name: 📚 Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🚀 Subir o serviço em segundo plano
+        run: nohup python app.py > app.log 2>&1 &
+
+      - name: 🩺 Health check (espera até 30s responder HTTP 200)
+        run: |
+          URL="http://127.0.0.1:${{ matrix.port }}${{ matrix.path }}"
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null "$URL"; then
+              echo "✅ ${{ matrix.service }} respondeu em $URL"; exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ ${{ matrix.service }} não respondeu"; cat app.log; exit 1
+
+      - name: 📄 Mostrar log do serviço
+        if: always()                           # roda mesmo se o passo anterior falhar
+        run: cat app.log
+
+  # ===================================================================
+  # ETAPA 2 — LINT: procura erros de sintaxe / nomes indefinidos
+  # ===================================================================
+  lint:
+    name: "2 · Lint (flake8)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 🔎 flake8 (só erros graves quebram o build)
+        run: |
+          pip install flake8
+          # E9/F63/F7/F82 = erro de sintaxe, comparação inválida, nome indefinido
+          flake8 burguer-app --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,htmlcov
+          # O resto é só aviso (não quebra): --exit-zero
+          flake8 burguer-app --count --exit-zero --max-line-length=120 --statistics --exclude=venv,.venv,htmlcov
+
+  # ===================================================================
+  # ETAPA 3 — TESTES UNITÁRIOS em várias versões do Python
+  # ===================================================================
+  testes-unitarios:
+    name: "3 · Unit ${{ matrix.service }} · Py ${{ matrix.python-version }}"
+    needs: [ smoke-servicos, lint ]            # só roda se as etapas 1 e 2 passarem
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.11", "3.12", "3.13" ]   # mesma suíte em 3 versões
+        service: [ auth-service, user-service ]       # serviços que têm pasta tests/
+        include:                                       # cobertura mínima de cada um
+          - { service: auth-service, cov-min: 20 }
+          - { service: user-service, cov-min: 3 }
+
+    defaults:
+      run:
+        working-directory: burguer-app/${{ matrix.service }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: burguer-app/*/requirements.txt
+
+      - name: 📚 Instalar dependências + ferramentas de teste
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: 🧪 Rodar pytest com cobertura
+        run: |
+          pytest tests -v -o addopts="" \
+            --cov=models --cov=services --cov=controllers --cov=config \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=${{ matrix.cov-min }} \
+            --junitxml=report.xml
+
+      - name: 📤 Publicar relatórios (JUnit + cobertura)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-${{ matrix.service }}-py${{ matrix.python-version }}
+          path: |
+            burguer-app/${{ matrix.service }}/report.xml
+            burguer-app/${{ matrix.service }}/coverage.xml
+
+  # ===================================================================
+  # ETAPA 4 — E2E / USABILIDADE com Selenium (sistema inteiro no ar)
+  # ===================================================================
+  testes-selenium:
+    name: "4 · Selenium (E2E)"
+    needs: testes-unitarios
+    runs-on: ubuntu-latest                     # já vem com Google Chrome instalado
+    timeout-minutes: 15
+
+    services:
+      mongo:
+        image: mongo:7
+        ports: [ "27017:27017" ]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      HEADLESS: "1"                            # Chrome sem janela (não existe tela no CI)
+      PAUSA: "0"                               # sem pausas didáticas
+      BASE_URL: "http://127.0.0.1:5000/auth"
+      TEST_EMAIL: "ci@teste.com"
+      TEST_SENHA: "123456"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: burguer-app/*/requirements.txt
+
+      - name: 📚 Instalar dependências de todos os serviços
+        working-directory: burguer-app
+        run: |
+          python -m pip install --upgrade pip
+          for s in auth-service user-service order-service product-service; do
+            pip install -r $s/requirements.txt
+          done
+          pip install pytest selenium
+
+      - name: 🚀 Subir os 4 microsserviços
+        working-directory: burguer-app
+        run: |
+          for s in auth-service user-service order-service product-service; do
+            (cd $s && nohup python app.py > app.log 2>&1 &)
+          done
+
+      - name: 🩺 Esperar todos responderem
+        run: |
+          for url in http://127.0.0.1:5000/auth/login http://127.0.0.1:5001/user/create \
+                     http://127.0.0.1:5002/order/list http://127.0.0.1:5003/product/list; do
+            for i in $(seq 1 30); do curl -sf -o /dev/null "$url" && break; sleep 1; done
+            curl -sf -o /dev/null "$url" && echo "✅ $url" || { echo "❌ $url"; exit 1; }
+          done
+
+      - name: 🌱 Criar usuário de teste (seed) pelo user-service
+        run: |
+          curl -s -o /dev/null -w "cadastro: HTTP %{http_code}\n" \
+            -X POST http://127.0.0.1:5001/user/create \
+            -d "email=$TEST_EMAIL" -d "password=$TEST_SENHA" -d "name=CI" -d "address=Rua do CI"
+
+      - name: 🧪 Rodar testes Selenium
+        working-directory: burguer-app/auth-service
+        run: pytest tests_selenium -v -o addopts="" --junitxml=selenium-report.xml
+
+      - name: 📄 Logs dos serviços (se falhar)
+        if: failure()
+        working-directory: burguer-app
+        run: for s in */app.log; do echo "===== $s"; cat "$s"; done
+
+      - name: 📤 Publicar relatório do Selenium
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-selenium
+          path: burguer-app/auth-service/selenium-report.xml

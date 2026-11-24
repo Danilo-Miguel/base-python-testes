@@ -6,6 +6,7 @@ Pré-requisitos:
   3. Ter um usuário cadastrado (ajuste EMAIL/SENHA abaixo)
 Rodar:  pytest tests_selenium -v
 """
+import os
 import time
 import pytest
 from selenium import webdriver
@@ -13,10 +14,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-BASE_URL = "http://127.0.0.1:5000/auth"
-EMAIL = "aula1795556425@teste.com"
-SENHA = "123456"
-PAUSA = 1.5   # segundos entre cada acao (0 = velocidade normal)
+# Valores padrão = aula (local). No pipeline (CI) eles vêm de variáveis de ambiente.
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5000/auth")
+EMAIL = os.getenv("TEST_EMAIL", "aula1795556425@teste.com")
+SENHA = os.getenv("TEST_SENHA", "123456")
+PAUSA = float(os.getenv("PAUSA", "1.5"))   # segundos entre cada acao (0 = velocidade normal)
+HEADLESS = os.getenv("HEADLESS", "0") == "1"  # 1 = sem abrir janela (obrigatório no CI)
 
 
 def pausa():
@@ -25,7 +28,13 @@ def pausa():
 
 @pytest.fixture
 def driver():
-    d = webdriver.Chrome()          # Selenium 4 baixa o driver sozinho
+    opts = webdriver.ChromeOptions()
+    if HEADLESS:
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--window-size=1280,900")
+    d = webdriver.Chrome(options=opts)   # Selenium 4 baixa o driver sozinho
     d.implicitly_wait(10)
     yield d
     pausa()
