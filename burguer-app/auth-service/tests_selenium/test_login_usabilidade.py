@@ -14,7 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 BASE_URL = "http://127.0.0.1:5000/auth"
-EMAIL = "teste@teste.com"
+EMAIL = "aula1795556425@teste.com"
 SENHA = "123456"
 PAUSA = 1.5   # segundos entre cada acao (0 = velocidade normal)
 
